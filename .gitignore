@@ -1,0 +1,4 @@
+# Ignore all PDF files in the repository
+*.pdf
+
+.DS_Store
