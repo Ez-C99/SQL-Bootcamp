@@ -1,0 +1,48 @@
+name: Postgres dataset smoke
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      pg:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: udemy_sql
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d udemy_sql"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Load dataset scripts (sorted)
+        env:
+          PGPASSWORD: postgres
+        run: |
+          shopt -s nullglob
+          files=( $(find sql-ultimate-course/datasets/postgres -type f -name "*.sql" | sort) )
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No .sql files found in sql-ultimate-course/datasets/postgres"; exit 1
+          fi
+          for f in "${files[@]}"; do
+            echo ">> Loading $f"
+            psql -h localhost -U postgres -d udemy_sql -v ON_ERROR_STOP=1 -1 -f "$f"
+          done
+
+      - name: Run checks
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d udemy_sql \
+            -f sql-ultimate-course/checks/checks_postgres.sql
