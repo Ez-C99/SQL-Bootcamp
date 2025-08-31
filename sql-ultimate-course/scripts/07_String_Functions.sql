@@ -20,98 +20,38 @@
 =================================================================================
 */
 
-/* ============================================================================== 
-   CONCAT() - String Concatenation
-=============================================================================== */
+SET search_path TO mydatabase, sales, public;
 
--- Concatenate first name and country into one column
+/* CONCAT */
+SELECT CONCAT(first_name, '-', country) AS full_info FROM customers;
+
+/* LOWER / UPPER */
+SELECT LOWER(first_name) AS lower_case_name FROM customers;
+SELECT UPPER(first_name) AS upper_case_name FROM customers;
+
+/* TRIM + LENGTH */
 SELECT 
-    CONCAT(first_name, '-', country) AS full_info
+  first_name,
+  length(first_name)                AS len_name,
+  length(trim(first_name))          AS len_trim_name,
+  length(first_name) - length(trim(first_name)) AS flag
 FROM customers
+WHERE length(first_name) <> length(trim(first_name));
 
-/* ============================================================================== 
-   LOWER() & UPPER() - Case Transformation
-=============================================================================== */
+/* REPLACE */
+SELECT '123-456-7890' AS phone, REPLACE('123-456-7890', '-', '/') AS clean_phone;
+SELECT 'report.txt' AS old_filename, REPLACE('report.txt', '.txt', '.csv') AS new_filename;
 
--- Convert the first name to lowercase
-SELECT 
-    LOWER(first_name) AS lower_case_name
-FROM customers
+/* LENGTH */
+SELECT first_name, length(first_name) AS name_length FROM customers;
 
--- Convert the first name to uppercase
-SELECT 
-    UPPER(first_name) AS upper_case_name
-FROM customers
-	
-/* ============================================================================== 
-   TRIM() - Remove White Spaces
-=============================================================================== */
+/* LEFT / RIGHT */
+SELECT first_name, left(trim(first_name), 2) AS first_2_chars FROM customers;
+SELECT first_name, right(first_name, 2)      AS last_2_chars  FROM customers;
 
--- Find customers whose first name contains leading or trailing spaces
-SELECT 
-    first_name,
-	LEN(first_name) len_name,
-	LEN(TRIM(first_name)) len_trim_name,
-	LEN(first_name) - LEN(TRIM(first_name)) flag
-FROM customers
-WHERE LEN(first_name)  != LEN(TRIM(first_name))
--- WHERE first_name != TRIM(first_name)
+/* SUBSTRING (use substr in PG) */
+SELECT first_name, substr(trim(first_name), 2, length(first_name)) AS trimmed_name
+FROM customers;
 
-/* ============================================================================== 
-   REPLACE() - Replace or Remove old value with new one
-=============================================================================== */
--- Remove dashes (-) from a phone number
-SELECT
-'123-456-7890' AS phone,
-REPLACE('123-456-7890', '-', '/') AS clean_phone
-
--- Replace File Extence from txt to csv
-SELECT
-'report.txt' AS old_filename,
-REPLACE('report.txt', '.txt', '.csv') AS new_filename
-	
-/* ============================================================================== 
-   LEN() - String Length & Trimming
-=============================================================================== */
-
--- Calculate the length of each customer's first name
-SELECT 
-    first_name, 
-    LEN(first_name) AS name_length
-FROM customers
-	
-/* ============================================================================== 
-   LEFT() & RIGHT() - Substring Extraction
-=============================================================================== */
-
--- Retrieve the first two characters of each first name
-SELECT 
-    first_name,
-    LEFT(TRIM(first_name), 2) AS first_2_chars
-FROM customers
-
--- Retrieve the last two characters of each first name
-SELECT 
-    first_name,
-    RIGHT(first_name, 2) AS last_2_chars
-FROM customers
-	
-/* ============================================================================== 
-   SUBSTRING() - Extracting Substrings
-=============================================================================== */
-
--- Retrieve a list of customers' first names after removing the first character
-SELECT 
-    first_name,
-    SUBSTRING(TRIM(first_name), 2, LEN(first_name)) AS trimmed_name
-FROM customers	
-
-/* ==============================================================================
-   NESTING FUNCTIONS
-===============================================================================*/
-
--- Nesting
-SELECT
-first_name, 
-UPPER(LOWER(first_name)) AS nesting
-FROM customers
+/* Nesting */
+SELECT first_name, UPPER(LOWER(first_name)) AS nesting FROM customers;

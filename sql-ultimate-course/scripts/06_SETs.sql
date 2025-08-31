@@ -14,165 +14,60 @@
 =================================================================================
 */
 
-/* ==============================================================================
-   RULES OF SET OPERATIONS
-===============================================================================*/
+SET search_path TO mydatabase, sales, public;
 
-/* RULE: Data Types
-   The data types of columns in each query should match.
-*/
-SELECT
-    FirstName,
-    LastName,
-    Country
-FROM Sales.Customers
+/* RULES (examples that would error are commented) */
+
+-- Data types should match across branches of set ops
+-- SELECT FirstName, LastName, Country FROM sales.customers
+-- UNION
+-- SELECT FirstName, LastName FROM sales.employees; -- (column count mismatch)
+
+/* Column order must match */
+-- SELECT LastName, CustomerID FROM sales.customers
+-- UNION
+-- SELECT EmployeeID, LastName FROM sales.employees;
+
+/* Column aliases come from the first SELECT */
+SELECT CustomerID AS id, LastName AS last_name FROM sales.customers
 UNION
-SELECT
-    FirstName,
-    LastName
-FROM Sales.Employees;
+SELECT EmployeeID, LastName FROM sales.employees;
 
-/* RULE: Data Types (Example)
-   The data types of columns in each query should match.
-*/
-SELECT
-    CustomerID,
-    LastName
-FROM Sales.Customers
+/* Ensure correct columns */
+SELECT FirstName, LastName FROM sales.customers
 UNION
-SELECT
-    FirstName,
-    LastName
-FROM Sales.Employees;
+SELECT FirstName, LastName FROM sales.employees;
 
-/* RULE: Column Order
-   The order of the columns in each query must be the same.
-*/
-SELECT
-    LastName,
-    CustomerID
-FROM Sales.Customers
+/* TASK 1: UNION */
+SELECT FirstName, LastName FROM sales.customers
 UNION
-SELECT
-    EmployeeID,
-    LastName
-FROM Sales.Employees;
+SELECT FirstName, LastName FROM sales.employees;
 
-/* RULE: Column Aliases
-   The column names in the result set are determined by the column names
-   specified in the first SELECT statement.
-*/
-SELECT
-    CustomerID AS ID,
-    LastName AS Last_Name
-FROM Sales.Customers
-UNION
-SELECT
-    EmployeeID,
-    LastName
-FROM Sales.Employees;
-
-/* RULE: Correct Columns
-   Ensure that the correct columns are used to maintain data consistency.
-*/
-SELECT
-    FirstName,
-    LastName
-FROM Sales.Customers
-UNION
-SELECT
-    LastName,
-    FirstName
-FROM Sales.Employees;
-
-/* ==============================================================================
-   SETS: UNION, UNION ALL, EXCEPT, INTERSECT
-===============================================================================*/
-
-/* TASK 1: 
-   Combine the data from Employees and Customers into one table using UNION 
-*/
-SELECT
-    FirstName,
-    LastName
-FROM Sales.Customers
-UNION
-SELECT
-    FirstName,
-    LastName
-FROM Sales.Employees;
-
-/* TASK 2: 
-   Combine the data from Employees and Customers into one table, including duplicates, using UNION ALL 
-*/
-SELECT
-    FirstName,
-    LastName
-FROM Sales.Customers
+/* TASK 2: UNION ALL */
+SELECT FirstName, LastName FROM sales.customers
 UNION ALL
-SELECT
-    FirstName,
-    LastName
-FROM Sales.Employees;
+SELECT FirstName, LastName FROM sales.employees;
 
-/* TASK 3: 
-   Find employees who are NOT customers using EXCEPT 
-*/
-SELECT
-    FirstName,
-    LastName
-FROM Sales.Employees
+/* TASK 3: EXCEPT (employees not customers) */
+SELECT FirstName, LastName FROM sales.employees
 EXCEPT
-SELECT
-    FirstName,
-    LastName
-FROM Sales.Customers;
+SELECT FirstName, LastName FROM sales.customers;
 
-/* TASK 4: 
-   Find employees who are also customers using INTERSECT 
-*/
-SELECT
-    FirstName,
-    LastName
-FROM Sales.Employees
+/* TASK 4: INTERSECT (employees also customers) */
+SELECT FirstName, LastName FROM sales.employees
 INTERSECT
-SELECT
-    FirstName,
-    LastName
-FROM Sales.Customers;
+SELECT FirstName, LastName FROM sales.customers;
 
-/* TASK 5: 
-   Combine order data from Orders and OrdersArchive into one report without duplicates 
-*/
+/* TASK 5: UNION Orders + OrdersArchive */
 SELECT
-    'Orders' AS SourceTable,
-    OrderID,
-    ProductID,
-    CustomerID,
-    SalesPersonID,
-    OrderDate,
-    ShipDate,
-    OrderStatus,
-    ShipAddress,
-    BillAddress,
-    Quantity,
-    Sales,
-    CreationTime
-FROM Sales.Orders
+  'Orders' AS source_table, orderid, productid, customerid, salespersonid,
+  orderdate, shipdate, orderstatus, shipaddress, billaddress,
+  quantity, sales, creationtime
+FROM sales.orders
 UNION
 SELECT
-    'OrdersArchive' AS SourceTable,
-    OrderID,
-    ProductID,
-    CustomerID,
-    SalesPersonID,
-    OrderDate,
-    ShipDate,
-    OrderStatus,
-    ShipAddress,
-    BillAddress,
-    Quantity,
-    Sales,
-    CreationTime
-FROM Sales.OrdersArchive
-ORDER BY OrderID;
+  'OrdersArchive' AS source_table, orderid, productid, customerid, salespersonid,
+  orderdate, shipdate, orderstatus, shipaddress, billaddress,
+  quantity, sales, creationtime
+FROM sales.ordersarchive
+ORDER BY orderid;

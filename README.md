@@ -68,6 +68,6 @@ The **checks** will highlight all of the above without breaking your load.
 ## How this aligns with the tools you’re using
 
 - **Docker init workflow**: scripts execute once on a fresh data dir; a reset (`down -v`) re-runs them.
-- **`psql` flags**: `-1` wraps the run in a single transaction; `ON_ERROR_STOP` halts on first error — great for CI. 
-- **VS Code extension**: the official Microsoft PostgreSQL extension supports connections, object browsing, and query authoring directly in VS Code. 
+- **`psql` flags**: `-1` wraps the run in a single transaction; `ON_ERROR_STOP` halts on first error — great for CI.
+- **VS Code extension**: the official Microsoft PostgreSQL extension supports connections, object browsing, and query authoring directly in VS Code.
 - **pgAdmin**: env vars `PGADMIN_DEFAULT_EMAIL` / `PGADMIN_DEFAULT_PASSWORD` are required for the containerised pgAdmin login.

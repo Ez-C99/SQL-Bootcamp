@@ -20,252 +20,136 @@
 ===============================================================================
 */
 
-/* ==============================================================================
-   GETDATE() | DATE VALUES
-===============================================================================*/
+SET search_path TO mydatabase, sales, public;
 
-/* TASK 1:
-   Display OrderID, CreationTime, a hard-coded date, and the current system date.
-*/
+/* TASK 1: GETDATE -> now() */
+SELECT orderid, creationtime, DATE '2025-08-20' AS hardcoded, now() AS today
+FROM sales.orders;
+
+/* TASK 2: date_trunc / to_char / extract */
 SELECT
-    OrderID,
-    CreationTime,
-    '2025-08-20' AS HardCoded,
-    GETDATE() AS Today
-FROM Sales.Orders;
+  orderid,
+  creationtime,
+  date_trunc('year',   creationtime) AS year_dt,
+  date_trunc('day',    creationtime) AS day_dt,
+  date_trunc('minute', creationtime) AS minute_dt,
+  to_char(creationtime, 'Month')     AS month_dn,
+  to_char(creationtime, 'Dy')        AS weekday_dn,
+  to_char(creationtime, 'DD')        AS day_dn,
+  to_char(creationtime, 'YYYY')      AS year_dn,
+  extract(year   FROM creationtime)  AS year_dp,
+  extract(month  FROM creationtime)  AS month_dp,
+  extract(day    FROM creationtime)  AS day_dp,
+  extract(hour   FROM creationtime)  AS hour_dp,
+  extract(quarter FROM creationtime) AS quarter_dp,
+  extract(week    FROM creationtime) AS week_dp
+FROM sales.orders;
 
-/* ==============================================================================
-   DATE PART EXTRACTIONS
-   (DATETRUNC, DATENAME, DATEPART, YEAR, MONTH, DAY)
-===============================================================================*/
+/* TASK 3: Aggregate by year */
+SELECT date_trunc('year', creationtime) AS creation_year, COUNT(*) AS ordercount
+FROM sales.orders
+GROUP BY 1;
 
-/* TASK 2:
-   Extract various parts of CreationTime using DATETRUNC, DATENAME, DATEPART,
-   YEAR, MONTH, and DAY.
-*/
+/* TASK 4: EOMONTH equivalent */
+SELECT orderid,
+       creationtime,
+       /* last day of month */
+       (date_trunc('month', creationtime)::date + INTERVAL '1 month' - INTERVAL '1 day')::date AS end_of_month
+FROM sales.orders;
+
+/* TASK 5/6/7/8: counts by parts */
+SELECT extract(year FROM orderdate) AS orderyear, COUNT(*) AS totalorders
+FROM sales.orders
+GROUP BY 1;
+
+SELECT extract(month FROM orderdate) AS ordermonth, COUNT(*) AS totalorders
+FROM sales.orders
+GROUP BY 1;
+
+SELECT to_char(orderdate, 'Month') AS ordermonth, COUNT(*) AS totalorders
+FROM sales.orders
+GROUP BY 1;
+
+SELECT * FROM sales.orders WHERE extract(month FROM orderdate) = 2;
+
+/* TASK 9/10/11: formatting -> to_char */
+SELECT orderid,
+       creationtime,
+       to_char(creationtime, 'MM-DD-YYYY') AS usa_format,
+       to_char(creationtime, 'DD-MM-YYYY') AS euro_format,
+       to_char(creationtime, 'DD')         AS dd,
+       to_char(creationtime, 'Dy')         AS ddd,
+       to_char(creationtime, 'Day')        AS dddd,
+       to_char(creationtime, 'Mon')        AS mon,
+       to_char(creationtime, 'Month')      AS month
+FROM sales.orders;
+
+SELECT orderid,
+       creationtime,
+       'Day ' || to_char(creationtime, 'Dy Mon') ||
+       ' Q' || to_char(creationtime, 'Q') || ' ' ||
+       to_char(creationtime, 'YYYY HH12:MI:SS AM') AS customformat
+FROM sales.orders;
+
+SELECT to_char(creationtime, 'Mon YY') AS orderdate, COUNT(*) AS totalorders
+FROM sales.orders
+GROUP BY 1;
+
+/* TASK 12: CONVERT equivalents */
 SELECT
-    OrderID,
-    CreationTime,
-    -- DATETRUNC Examples
-    DATETRUNC(year, CreationTime) AS Year_dt,
-    DATETRUNC(day, CreationTime) AS Day_dt,
-    DATETRUNC(minute, CreationTime) AS Minute_dt,
-    -- DATENAME Examples
-    DATENAME(month, CreationTime) AS Month_dn,
-    DATENAME(weekday, CreationTime) AS Weekday_dn,
-    DATENAME(day, CreationTime) AS Day_dn,
-    DATENAME(year, CreationTime) AS Year_dn,
-    -- DATEPART Examples
-    DATEPART(year, CreationTime) AS Year_dp,
-    DATEPART(month, CreationTime) AS Month_dp,
-    DATEPART(day, CreationTime) AS Day_dp,
-    DATEPART(hour, CreationTime) AS Hour_dp,
-    DATEPART(quarter, CreationTime) AS Quarter_dp,
-    DATEPART(week, CreationTime) AS Week_dp,
-    YEAR(CreationTime) AS Year,
-    MONTH(CreationTime) AS Month,
-    DAY(CreationTime) AS Day
-FROM Sales.Orders;
+  CAST('123' AS INT)                       AS string_to_int,
+  DATE '2025-08-20'                        AS string_to_date,
+  creationtime,
+  CAST(creationtime AS DATE)               AS datetime_to_date,
+  to_char(creationtime, 'YYYY-MM-DD"T"HH24:MI:SS') AS iso_like
+FROM sales.orders;
 
-/* ==============================================================================
-   DATETRUNC() DATA AGGREGATION
-===============================================================================*/
-
-/* TASK 3:
-   Aggregate orders by year using DATETRUNC on CreationTime.
-*/
+/* TASK 13: CAST */
 SELECT
-    DATETRUNC(year, CreationTime) AS Creation,
-    COUNT(*) AS OrderCount
-FROM Sales.Orders
-GROUP BY DATETRUNC(year, CreationTime);
+  CAST('123' AS INT)           AS string_to_int,
+  CAST(123 AS VARCHAR)         AS int_to_string,
+  CAST('2025-08-20' AS DATE)   AS string_to_date,
+  CAST('2025-08-20' AS TIMESTAMP) AS string_to_timestamp,
+  creationtime,
+  CAST(creationtime AS DATE)   AS datetime_to_date
+FROM sales.orders;
 
-/* ==============================================================================
-   EOMONTH()
-===============================================================================*/
+/* TASK 14: DATEADD / DATEDIFF analogs */
+SELECT orderid,
+       orderdate,
+       orderdate - INTERVAL '10 days' AS ten_days_before,
+       orderdate + INTERVAL '3 months' AS three_months_later,
+       orderdate + INTERVAL '2 years'  AS two_years_later
+FROM sales.orders;
 
-/* TASK 4:
-   Display OrderID, CreationTime, and the end-of-month date for CreationTime.
-*/
-SELECT
-    OrderID,
-    CreationTime,
-    EOMONTH(CreationTime) AS EndOfMonth
-FROM Sales.Orders;
+/* TASK 15: Age in years */
+SELECT employeeid, birthdate,
+       EXTRACT(YEAR FROM age(now(), birthdate))::int AS age_years
+FROM sales.employees;
 
-/* ==============================================================================
-   DATE PARTS | USE CASES
-===============================================================================*/
+/* TASK 16: Avg ship duration (days) */
+SELECT extract(month FROM orderdate) AS ordermonth,
+       AVG(EXTRACT(day FROM (shipdate - orderdate))) AS avgship_days
+FROM sales.orders
+GROUP BY 1;
 
-/* TASK 5:
-   How many orders were placed each year?
-*/
-SELECT 
-    YEAR(OrderDate) AS OrderYear, 
-    COUNT(*) AS TotalOrders
-FROM Sales.Orders
-GROUP BY YEAR(OrderDate);
+/* TASK 17: Gap between orders */
+SELECT orderid,
+       orderdate AS currentorderdate,
+       LAG(orderdate) OVER (ORDER BY orderdate) AS previousorderdate,
+       EXTRACT(DAY FROM (orderdate - LAG(orderdate) OVER (ORDER BY orderdate))) AS nr_of_days
+FROM sales.orders;
 
-/* TASK 6:
-   How many orders were placed each month?
-*/
-SELECT 
-    MONTH(OrderDate) AS OrderMonth, 
-    COUNT(*) AS TotalOrders
-FROM Sales.Orders
-GROUP BY MONTH(OrderDate);
-
-/* TASK 7:
-   How many orders were placed each month (using friendly month names)?
-*/
-SELECT 
-    DATENAME(month, OrderDate) AS OrderMonth, 
-    COUNT(*) AS TotalOrders
-FROM Sales.Orders
-GROUP BY DATENAME(month, OrderDate);
-
-/* TASK 8:
-   Show all orders that were placed during the month of February.
-*/
-SELECT
-    *
-FROM Sales.Orders
-WHERE MONTH(OrderDate) = 2;
-
-/* ==============================================================================
-   FORMAT()
-===============================================================================*/
-
-/* TASK 9:
-   Format CreationTime into various string representations.
-*/
-SELECT
-    OrderID,
-    CreationTime,
-    FORMAT(CreationTime, 'MM-dd-yyyy') AS USA_Format,
-    FORMAT(CreationTime, 'dd-MM-yyyy') AS EURO_Format,
-    FORMAT(CreationTime, 'dd') AS dd,
-    FORMAT(CreationTime, 'ddd') AS ddd,
-    FORMAT(CreationTime, 'dddd') AS dddd,
-    FORMAT(CreationTime, 'MM') AS MM,
-    FORMAT(CreationTime, 'MMM') AS MMM,
-    FORMAT(CreationTime, 'MMMM') AS MMMM
-FROM Sales.Orders;
-
-/* TASK 10:
-   Display CreationTime using a custom format:
-   Example: Day Wed Jan Q1 2025 12:34:56 PM
-*/
-SELECT
-    OrderID,
-    CreationTime,
-    'Day ' + FORMAT(CreationTime, 'ddd MMM') +
-    ' Q' + DATENAME(quarter, CreationTime) + ' ' +
-    FORMAT(CreationTime, 'yyyy hh:mm:ss tt') AS CustomFormat
-FROM Sales.Orders;
-
-/* TASK 11:
-   How many orders were placed each year, formatted by month and year (e.g., "Jan 25")?
-*/
-SELECT
-    FORMAT(CreationTime, 'MMM yy') AS OrderDate,
-    COUNT(*) AS TotalOrders
-FROM Sales.Orders
-GROUP BY FORMAT(CreationTime, 'MMM yy');
-
-/* ==============================================================================
-   CONVERT()
-===============================================================================*/
-
-/* TASK 12:
-   Demonstrate conversion using CONVERT.
-*/
-SELECT
-    CONVERT(INT, '123') AS [String to Int CONVERT],
-    CONVERT(DATE, '2025-08-20') AS [String to Date CONVERT],
-    CreationTime,
-    CONVERT(DATE, CreationTime) AS [Datetime to Date CONVERT],
-    CONVERT(VARCHAR, CreationTime, 32) AS [USA Std. Style:32],
-    CONVERT(VARCHAR, CreationTime, 34) AS [EURO Std. Style:34]
-FROM Sales.Orders;
-
-/* ==============================================================================
-   CAST()
-===============================================================================*/
-
-/* TASK 13:
-   Convert data types using CAST.
-*/
-SELECT
-    CAST('123' AS INT) AS [String to Int],
-    CAST(123 AS VARCHAR) AS [Int to String],
-    CAST('2025-08-20' AS DATE) AS [String to Date],
-    CAST('2025-08-20' AS DATETIME2) AS [String to Datetime],
-    CreationTime,
-    CAST(CreationTime AS DATE) AS [Datetime to Date]
-FROM Sales.Orders;
-
-/* ==============================================================================
-   DATEADD() / DATEDIFF()
-===============================================================================*/
-
-/* TASK 14:
-   Perform date arithmetic on OrderDate.
-*/
-SELECT
-    OrderID,
-    OrderDate,
-    DATEADD(day, -10, OrderDate) AS TenDaysBefore,
-    DATEADD(month, 3, OrderDate) AS ThreeMonthsLater,
-    DATEADD(year, 2, OrderDate) AS TwoYearsLater
-FROM Sales.Orders;
-
-/* TASK 15:
-   Calculate the age of employees.
-*/
-SELECT
-    EmployeeID,
-    BirthDate,
-    DATEDIFF(year, BirthDate, GETDATE()) AS Age
-FROM Sales.Employees;
-
-/* TASK 16:
-   Find the average shipping duration in days for each month.
-*/
-SELECT
-    MONTH(OrderDate) AS OrderMonth,
-    AVG(DATEDIFF(day, OrderDate, ShipDate)) AS AvgShip
-FROM Sales.Orders
-GROUP BY MONTH(OrderDate);
-
-/* TASK 17:
-   Time Gap Analysis: Find the number of days between each order and the previous order.
-*/
-SELECT
-    OrderID,
-    OrderDate AS CurrentOrderDate,
-    LAG(OrderDate) OVER (ORDER BY OrderDate) AS PreviousOrderDate,
-    DATEDIFF(day, LAG(OrderDate) OVER (ORDER BY OrderDate), OrderDate) AS NrOfDays
-FROM Sales.Orders;
-
-/* ==============================================================================
-   ISDATE()
-===============================================================================*/
-
-/* TASK 18:
-   Validate OrderDate using ISDATE and convert valid dates.
-*/
-SELECT
-    OrderDate,
-    ISDATE(OrderDate) AS IsValidDate,
-    CASE 
-        WHEN ISDATE(OrderDate) = 1 THEN CAST(OrderDate AS DATE)
-        ELSE '9999-01-01'
-    END AS NewOrderDate
-FROM (
-    SELECT '2025-08-20' AS OrderDate UNION
-    SELECT '2025-08-21' UNION
-    SELECT '2025-08-23' UNION
-    SELECT '2025-08'
-) AS t
--- WHERE ISDATE(OrderDate) = 0
+/* TASK 18: ISDATE-ish validation via regex */
+WITH t(orderdate) AS (
+  SELECT '2025-08-20' UNION ALL
+  SELECT '2025-08-21' UNION ALL
+  SELECT '2025-08-23' UNION ALL
+  SELECT '2025-08'
+)
+SELECT orderdate,
+       (orderdate ~ '^\d{4}-\d{2}-\d{2}$') AS isvaliddate,
+       CASE WHEN orderdate ~ '^\d{4}-\d{2}-\d{2}$' THEN orderdate::date
+            ELSE DATE '9999-01-01'
+       END AS neworderdate
+FROM t;
