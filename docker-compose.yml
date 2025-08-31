@@ -13,8 +13,7 @@ services:
       timeout: 5s
       retries: 20
     volumes:
-      # Auto-executes .sql on first launch (empty volume only)
-      - ./sql-ultimate-course/datasets/postgres:/docker-entrypoint-initdb.d:ro
+      - ./sql-ultimate-course/datasets/postgres/initdb:/docker-entrypoint-initdb.d:ro
       - pgdata:/var/lib/postgresql/data
 
   pgadmin:
