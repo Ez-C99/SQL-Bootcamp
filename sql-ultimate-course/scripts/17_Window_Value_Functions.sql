@@ -13,71 +13,49 @@
 =================================================================================
 */
 
-/* ============================================================
-   SQL WINDOW VALUE | LEAD, LAG
-   ============================================================ */
+SET search_path TO mydatabase, sales, public;
 
-/* TASK 1:
-   Analyze the Month-over-Month Performance by Finding the Percentage Change in Sales
-   Between the Current and Previous Months
-*/
-
+/* MoM % change in sales (aggregate first, then LAG) */
+WITH monthly AS (
+  SELECT date_trunc('month', OrderDate)::date AS order_month,
+         SUM(Sales) AS month_sales
+  FROM Sales.Orders
+  GROUP BY 1
+)
 SELECT
-    *,
-    CurrentMonthSales - PreviousMonthSales AS MoM_Change,
-    ROUND(
-        CAST((CurrentMonthSales - PreviousMonthSales) AS FLOAT)
-        / PreviousMonthSales * 100, 1
-    ) AS MoM_Perc
-FROM (
-    SELECT
-        MONTH(OrderDate) AS OrderMonth,
-        SUM(Sales) AS CurrentMonthSales,
-        LAG(SUM(Sales)) OVER (ORDER BY MONTH(OrderDate)) AS PreviousMonthSales
-    FROM Sales.Orders
-    GROUP BY MONTH(OrderDate)
-) AS MonthlySales;
+  order_month,
+  month_sales AS current_month_sales,
+  LAG(month_sales) OVER (ORDER BY order_month) AS previous_month_sales,
+  (month_sales - LAG(month_sales) OVER (ORDER BY order_month)) AS momo_change,
+  ROUND(
+    ( (month_sales - LAG(month_sales) OVER (ORDER BY order_month))
+      / NULLIF(LAG(month_sales) OVER (ORDER BY order_month), 0)::numeric ) * 100
+  , 1) AS momo_perc
+FROM monthly
+ORDER BY order_month;
 
-
-/* TASK 2:
-   Customer Loyalty Analysis - Rank Customers Based on the Average Days Between Their Orders
-*/
-SELECT
+/* Customer loyalty: average days between orders */
+WITH per_order AS (
+  SELECT
     CustomerID,
-    AVG(DaysUntilNextOrder) AS AvgDays,
-    RANK() OVER (ORDER BY COALESCE(AVG(DaysUntilNextOrder), 999999)) AS RankAvg
-FROM (
-    SELECT
-        OrderID,
-        CustomerID,
-        OrderDate AS CurrentOrder,
-        LEAD(OrderDate) OVER (PARTITION BY CustomerID ORDER BY OrderDate) AS NextOrder,
-        DATEDIFF(
-            day,
-            OrderDate,
-            LEAD(OrderDate) OVER (PARTITION BY CustomerID ORDER BY OrderDate)
-        ) AS DaysUntilNextOrder
-    FROM Sales.Orders
-) AS CustomerOrdersWithNext
+    OrderDate AS current_order,
+    LEAD(OrderDate) OVER (PARTITION BY CustomerID ORDER BY OrderDate) AS next_order
+  FROM Sales.Orders
+)
+SELECT
+  CustomerID,
+  AVG(EXTRACT(DAY FROM (next_order - current_order))) AS AvgDays,
+  RANK() OVER (ORDER BY COALESCE(AVG(EXTRACT(DAY FROM (next_order - current_order))), 999999)) AS RankAvg
+FROM per_order
 GROUP BY CustomerID;
 
-/* ============================================================
-   SQL WINDOW VALUE | FIRST & LAST VALUE
-   ============================================================ */
-
-/* TASK 3:
-   Find the Lowest and Highest Sales for Each Product,
-   and determine the difference between the current Sales and the lowest Sales for each Product.
-*/
+/* FIRST_VALUE / LAST_VALUE */
 SELECT
-    OrderID,
-    ProductID,
-    Sales,
-    FIRST_VALUE(Sales) OVER (PARTITION BY ProductID ORDER BY Sales) AS LowestSales,
-    LAST_VALUE(Sales) OVER (
-        PARTITION BY ProductID 
-        ORDER BY Sales 
-        ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
-    ) AS HighestSales,
-    Sales - FIRST_VALUE(Sales) OVER (PARTITION BY ProductID ORDER BY Sales) AS SalesDifference
+  OrderID,
+  ProductID,
+  Sales,
+  FIRST_VALUE(Sales) OVER (PARTITION BY ProductID ORDER BY Sales) AS LowestSales,
+  LAST_VALUE(Sales)  OVER (PARTITION BY ProductID ORDER BY Sales
+                           ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING) AS HighestSales,
+  Sales - FIRST_VALUE(Sales) OVER (PARTITION BY ProductID ORDER BY Sales) AS SalesDifference
 FROM Sales.Orders;
