@@ -19,453 +19,208 @@
 ===============================================================================
 */
 
+SET search_path TO sales, mydatabase, public;
+
 -- ###############################################################
 -- #                        FETCHING DATA                        #
 -- ###############################################################
 
--- ============================================
--- Tip 1: Select Only What You Need
--- ============================================
+-- Tip 1: Select only what you need
+-- Bad
+SELECT * FROM sales.customers;
+-- Good
+SELECT customerid, firstname, lastname FROM sales.customers;
 
--- Bad Practice
-SELECT * FROM Sales.Customers
+-- Tip 2: Avoid unnecessary DISTINCT/ORDER BY
+-- Bad
+SELECT DISTINCT firstname FROM sales.customers ORDER BY firstname;
+-- Good
+SELECT firstname FROM sales.customers;
 
--- Good Practice
-SELECT CustomerID, FirstName, LastName FROM Sales.Customers
-
--- ============================================
--- Tip 2: Avoid unnecessary DISTINCT & ORDER BY
--- ============================================
-
--- Bad Practice
-SELECT DISTINCT 
-	FirstName 
-FROM Sales.Customers 
-ORDER BY FirstName
-
--- Good Practice
-SELECT 
-	FirstName 
-FROM Sales.Customers
-
--- ============================================
--- Tip 3: For Exploration Purpose, Limit Rows!
--- ============================================
-
--- Bad Practice
-SELECT 
-	OrderID,
-	Sales 
-FROM Sales.Orders
-
--- Good Practice
-SELECT TOP 10 
-	OrderID,
-	Sales 
-FROM Sales.Orders
+-- Tip 3: Limit for exploration
+-- Bad
+SELECT orderid, sales FROM sales.orders;
+-- Good
+SELECT orderid, sales FROM sales.orders ORDER BY orderid LIMIT 10;
 
 -- ###########################################################
 -- #                        FILTERING                        #
 -- ###########################################################
 
-/* ==============================================================================
-   Tip 4: Create nonclustered Index on frequently used Columns in WHERE clause
-===============================================================================*/
+-- Tip 4: Index on frequent filters
+CREATE INDEX IF NOT EXISTS idx_orders_orderstatus ON sales.orders(orderstatus);
+SELECT * FROM sales.orders WHERE orderstatus = 'Delivered';
 
-SELECT *
-FROM Sales.Orders
-WHERE OrderStatus = 'Delivered';
+-- Tip 5: Don’t wrap columns in functions in WHERE
+-- Bad
+SELECT * FROM sales.orders WHERE lower(orderstatus) = 'delivered';
+-- Good
+SELECT * FROM sales.orders WHERE orderstatus = 'Delivered';
 
-CREATE NONCLUSTERED INDEX Idx_Orders_OrderStatus ON Sales.Orders(OrderStatus)
+-- Bad
+SELECT * FROM sales.customers WHERE substring(firstname FROM 1 FOR 1) = 'A';
+-- Good
+SELECT * FROM sales.customers WHERE firstname LIKE 'A%';
 
-/* ==============================================================================
-   Tip 5: Avoid applying functions to columns in WHERE clauses
-===============================================================================*/
+-- Bad
+SELECT * FROM sales.orders WHERE EXTRACT(YEAR FROM orderdate) = 2025;
+-- Good
+SELECT * FROM sales.orders
+WHERE orderdate >= DATE '2025-01-01' AND orderdate < DATE '2026-01-01';
 
--- Bad Practice
-SELECT * FROM Sales.Orders 
-WHERE LOWER(OrderStatus) = 'delivered'
+-- Tip 6: Avoid leading wildcards
+-- Bad
+SELECT * FROM sales.customers WHERE lastname LIKE '%Gold%';
+-- Good
+SELECT * FROM sales.customers WHERE lastname LIKE 'Gold%';
+-- (or create index on lower(lastname) and search lower(...))
 
--- Good Practice
-SELECT * FROM Sales.Orders 
-WHERE OrderStatus = 'Delivered'
----------------------------------------------------------
--- Bad Practice
-SELECT * 
-FROM Sales.Customers
-WHERE SUBSTRING(FirstName, 1, 1) = 'A'
-
--- Good Practice
-SELECT * 
-FROM Sales.Customers
-WHERE FirstName LIKE 'A%'
----------------------------------------------------------
--- Bad Practice
-SELECT * 
-FROM Sales.Orders 
-WHERE YEAR(OrderDate) = 2025
-
--- Good Practice
-SELECT * 
-FROM Sales.Orders 
-WHERE OrderDate BETWEEN '2025-01-01' AND '2025-12-31'
-
-/* ==============================================================================
-   Tip 6: Avoid leading wildcards as they prevent index usage
-===============================================================================*/
-
--- Bad Practice
-SELECT * 
-FROM Sales.Customers 
-WHERE LastName LIKE '%Gold%'
-
--- Good Practice
-SELECT * 
-FROM Sales.Customers 
-WHERE LastName LIKE 'Gold%'
-
-/* ==============================================================================
-   Tip 7: Use IN instead of Multiple OR
-===============================================================================*/
-
--- Bad Practice
-SELECT * 
-FROM Sales.Orders
-WHERE CustomerID = 1 OR CustomerID = 2 OR CustomerID = 3
-
--- Good Practice
-SELECT * 
-FROM Sales.Orders
-WHERE CustomerID IN (1, 2, 3)
+-- Tip 7: IN instead of many ORs
+-- Bad
+SELECT * FROM sales.orders WHERE customerid = 1 OR customerid = 2 OR customerid = 3;
+-- Good
+SELECT * FROM sales.orders WHERE customerid IN (1,2,3);
 
 -- #######################################################
 -- #                        JOINS                        #
 -- #######################################################
 
-/* ==============================================================================
-   Tip 8: Understand The Speed of Joins & Use INNER JOIN when possible
-===============================================================================*/
+-- Tip 8: Prefer INNER JOIN when appropriate
+SELECT c.firstname, o.orderid
+FROM sales.customers c
+JOIN sales.orders o ON o.customerid = c.customerid;
 
--- Best Performance
-SELECT c.FirstName, o.OrderID FROM Sales.Customers c INNER JOIN Sales.Orders o ON c.CustomerID = o.CustomerID
+-- Tip 9: Use explicit ANSI joins
+-- Bad (implicit)
+SELECT o.orderid, c.firstname
+FROM sales.customers c, sales.orders o
+WHERE c.customerid = o.customerid;
+-- Good
+SELECT o.orderid, c.firstname
+FROM sales.customers c
+JOIN sales.orders o ON o.customerid = c.customerid;
 
--- Slightly Slower Performance
-SELECT c.FirstName, o.OrderID FROM Sales.Customers c RIGHT JOIN Sales.Orders o ON c.CustomerID = o.CustomerID
-SELECT c.FirstName, o.OrderID FROM Sales.Customers c LEFT JOIN Sales.Orders o ON c.CustomerID = o.CustomerID
+-- Tip 10: Index join keys
+CREATE INDEX IF NOT EXISTS ix_orders_customerid ON sales.orders(customerid);
 
--- Worst Performance
-SELECT c.FirstName, o.OrderID FROM Sales.Customers c OUTER JOIN Sales.Orders o ON c.CustomerID = o.CustomerID
+-- Tip 11: Filter early for big tables
+SELECT c.firstname, o.orderid
+FROM sales.customers c
+JOIN (SELECT orderid, customerid FROM sales.orders WHERE orderstatus='Delivered') o
+  ON o.customerid = c.customerid;
 
-/* ==============================================================================
-   Tip 9: Use Explicit Join (ANSI Join) Instead of Implicit Join (non-ANSI Join)
-===============================================================================*/
+-- Tip 12: Pre-aggregate before join for big tables
+SELECT c.customerid, c.firstname, o.ordercount
+FROM sales.customers c
+JOIN (
+  SELECT customerid, COUNT(orderid) AS ordercount
+  FROM sales.orders
+  GROUP BY customerid
+) o ON o.customerid = c.customerid;
 
--- Bad Practice
-SELECT o.OrderID, c.FirstName
-FROM Sales.Customers c, Sales.Orders o
-WHERE c.CustomerID = o.CustomerID
-
--- Good Practice
-SELECT o.OrderID, c.FirstName
-FROM Sales.Customers AS c
-INNER JOIN Sales.Orders AS o
-    ON c.CustomerID = o.CustomerID;
-
---For simple queries: There is no measurable performance difference if both ANSI and non-ANSI queries are correctly written.
---For complex queries: ANSI joins are usually easier to optimize and debug because their structure makes the intent of the query clearer.
-
-/* ==============================================================================
-   Tip 10: Make sure to Index the columns used in the ON clause
-===============================================================================*/
-
-SELECT c.FirstName, o.OrderID
-FROM Sales.Orders AS o
-INNER JOIN Sales.Customers AS c
-    ON c.CustomerID = o.CustomerID;
-
-CREATE NONCLUSTERED INDEX IX_Orders_CustomerID ON Sales.Orders(CustomerID)
-
-/* ==============================================================================
-   Tip 11: Filter Before Joining (Big Tables)
-===============================================================================*/
-
--- Best Practice For Small-Medium Tables
--- Filter After Join (WHERE)
-SELECT c.FirstName, o.OrderID
-FROM Sales.Customers AS c
-INNER JOIN Sales.Orders AS o
-    ON c.CustomerID = o.CustomerID
-WHERE o.OrderStatus = 'Delivered';
-
--- Filter During Join (ON)
-SELECT c.FirstName, o.OrderID
-FROM Sales.Customers AS c
-INNER JOIN Sales.Orders AS o
-    ON c.CustomerID = o.CustomerID
-   AND o.OrderStatus = 'Delivered';
-
--- Best Practice For Big Tables
--- Filter Before Join (SUBQUERY)
-SELECT c.FirstName, o.OrderID
-FROM Sales.Customers AS c
-INNER JOIN (
-    SELECT OrderID, CustomerID
-    FROM Sales.Orders
-    WHERE OrderStatus = 'Delivered'
-) AS o
-    ON c.CustomerID = o.CustomerID;
-
-/* ==============================================================================
-   Tip 12: Aggregate Before Joining (Big Tables)
-===============================================================================*/
-
--- Best Practice For Small-Medium Tables
--- Grouping and Joining
-SELECT c.CustomerID, c.FirstName, COUNT(o.OrderID) AS OrderCount
-FROM Sales.Customers AS c
-INNER JOIN Sales.Orders AS o
-    ON c.CustomerID = o.CustomerID
-GROUP BY c.CustomerID, c.FirstName;
-
--- Best Practice For Big Tables
--- Pre-aggregated Subquery
-SELECT c.CustomerID, c.FirstName, o.OrderCount
-FROM Sales.Customers AS c
-INNER JOIN (
-    SELECT CustomerID, COUNT(OrderID) AS OrderCount
-    FROM Sales.Orders
-    GROUP BY CustomerID
-) AS o
-    ON c.CustomerID = o.CustomerID;
-
--- Bad Practice
--- Correlated Subquery
-SELECT 
-    c.CustomerID, 
-    c.FirstName,
-    (SELECT COUNT(o.OrderID)
-     FROM Sales.Orders AS o
-     WHERE o.CustomerID = c.CustomerID) AS OrderCount
-FROM Sales.Customers AS c;
-
-/* ==============================================================================
-   Tip 13: Use Union Instead of OR in Joins
-===============================================================================*/
-
--- Bad Practice
-SELECT o.OrderID, c.FirstName
-FROM Sales.Customers AS c
-INNER JOIN Sales.Orders AS o
-    ON c.CustomerID = o.CustomerID
-    OR c.CustomerID = o.SalesPersonID;
-
--- Best Practice
-SELECT o.OrderID, c.FirstName
-FROM Sales.Customers AS c
-INNER JOIN Sales.Orders AS o
-    ON c.CustomerID = o.CustomerID
+-- Tip 13: UNION vs OR across two join patterns
+SELECT o.orderid, c.firstname
+FROM sales.customers c
+JOIN sales.orders o ON c.customerid = o.customerid
 UNION
-SELECT o.OrderID, c.FirstName
-FROM Sales.Customers AS c
-INNER JOIN Sales.Orders AS o
-    ON c.CustomerID = o.SalesPersonID;
+SELECT o.orderid, c.firstname
+FROM sales.customers c
+JOIN sales.orders o ON c.customerid = o.salespersonid;
 
-/* ==============================================================================
-   Tip 14: Check for Nested Loops and Use SQL HINTS
-===============================================================================*/
-
-SELECT o.OrderID, c.FirstName
-FROM Sales.Customers c
-INNER JOIN Sales.Orders o 
-ON c.CustomerID = o.CustomerID
-
--- Good Practice for Having Big Table & Small Table
-SELECT o.OrderID, c.FirstName
-FROM Sales.Customers AS c
-INNER JOIN Sales.Orders AS o
-    ON c.CustomerID = o.CustomerID
-OPTION (HASH JOIN);
+-- (No optimizer hints in stock Postgres; inspect with EXPLAIN/ANALYZE)
 
 -- ################################################################
 -- #                           UNION                              #
 -- ################################################################
 
-/* ==============================================================================
-   Tip 15: Use UNION ALL instead of using UNION | duplicates are acceptable
-===============================================================================*/
-
--- Bad Practice
-SELECT CustomerID FROM Sales.Orders
+-- Tip 15: Use UNION ALL if duplicates ok
+-- Bad
+SELECT customerid FROM sales.orders
 UNION
-SELECT CustomerID FROM Sales.OrdersArchive 
-
--- Best Practice
-SELECT CustomerID FROM Sales.Orders
+SELECT customerid FROM sales.ordersarchive;
+-- Good
+SELECT customerid FROM sales.orders
 UNION ALL
-SELECT CustomerID FROM Sales.OrdersArchive 
+SELECT customerid FROM sales.ordersarchive;
 
-/* =======================================================================================
-   Tip 16: Use UNION ALL + Distinct instead of using UNION | duplicates are not acceptable
-========================================================================================*/
-
--- Bad Practice
-SELECT CustomerID FROM Sales.Orders
-UNION
-SELECT CustomerID FROM Sales.OrdersArchive 
-
--- Best Practice
-SELECT DISTINCT CustomerID
+-- Tip 16: UNION ALL + DISTINCT if dedupe needed
+SELECT DISTINCT customerid
 FROM (
-    SELECT CustomerID FROM Sales.Orders
-    UNION ALL
-    SELECT CustomerID FROM Sales.OrdersArchive
-) AS CombinedData
-
+  SELECT customerid FROM sales.orders
+  UNION ALL
+  SELECT customerid FROM sales.ordersarchive
+) t;
 
 -- ##########################################################
 -- #                     AGGREGATIONS                       #
 -- ##########################################################
 
-/* ==============================================================================
-   Tip 17: Use Columnstore Index for Aggregations on Large Table
-===============================================================================*/
+-- Tip 17: For big time-series, consider BRIN or matviews
+CREATE INDEX IF NOT EXISTS idx_orders_brin_orderdate ON sales.orders USING brin(orderdate);
 
-SELECT CustomerID, COUNT(OrderID) AS OrderCount
-FROM Sales.Orders 
-GROUP BY CustomerID
+-- Tip 18: Pre-aggregate for reporting (materialized view)
+DROP MATERIALIZED VIEW IF EXISTS sales.sales_summary;
+CREATE MATERIALIZED VIEW sales.sales_summary AS
+SELECT date_trunc('month', orderdate)::date AS order_month,
+       SUM(sales) AS total_sales
+FROM sales.orders
+GROUP BY 1;
 
-CREATE CLUSTERED COLUMNSTORE INDEX Idx_Orders_Columnstore ON Sales.Orders
-
-/* ==============================================================================
-   Tip 18: Pre-Aggregate Data and store it in new Table for Reporting
-===============================================================================*/
-
-SELECT MONTH(OrderDate) OrderYear, SUM(Sales) AS TotalSales
-INTO Sales.SalesSummary
-FROM Sales.Orders
-GROUP BY MONTH(OrderDate)
-
-SELECT OrderYear, TotalSales FROM Sales.SalesSummary
-
+SELECT * FROM sales.sales_summary ORDER BY order_month;
 
 -- ##############################################################
 -- #                       SUBQUERIES, CTE                      #
 -- ##############################################################
 
-/* ==============================================================================
-   Tip 19: JOIN vs EXISTS vs IN (Avoid using IN)
-===============================================================================*/
-
--- JOIN (Best Practice: If the Performance equals to EXISTS)
-SELECT o.OrderID, o.Sales
-FROM Sales.Orders AS o
-INNER JOIN Sales.Customers AS c
-    ON o.CustomerID = c.CustomerID
-WHERE c.Country = 'USA';
-
--- EXISTS (Best Practice: Use it for Large Tables)
-SELECT o.OrderID, o.Sales
-FROM Sales.Orders AS o
+-- Tip 19: JOIN vs EXISTS vs IN
+SELECT o.orderid, o.sales
+FROM sales.orders o
 WHERE EXISTS (
-    SELECT 1
-    FROM Sales.Customers AS c
-    WHERE c.CustomerID = o.CustomerID
-      AND c.Country = 'USA'
+  SELECT 1 FROM sales.customers c
+  WHERE c.customerid = o.customerid AND c.country = 'USA'
 );
 
--- IN (Bad Practice)
-SELECT o.OrderID, o.Sales
-FROM Sales.Orders AS o
-WHERE o.CustomerID IN (
-    SELECT CustomerID
-    FROM Sales.Customers
-    WHERE Country = 'USA'
-);
-
-/* ==============================================================================
-   Tip 20: Avoid Redundant Logic in Your Query
-===============================================================================*/
-
--- Bad Practice
-SELECT EmployeeID, FirstName, 'Above Average' AS Status
-FROM Sales.Employees
-WHERE Salary > (SELECT AVG(Salary) FROM Sales.Employees)
-UNION ALL
-SELECT EmployeeID, FirstName, 'Below Average' AS Status
-FROM Sales.Employees
-WHERE Salary < (SELECT AVG(Salary) FROM Sales.Employees);
-
--- Good Practice
-SELECT 
-    EmployeeID, 
-    FirstName, 
-    CASE 
-        WHEN Salary > AVG(Salary) OVER () THEN 'Above Average'
-        WHEN Salary < AVG(Salary) OVER () THEN 'Below Average'
-        ELSE 'Average'
-    END AS Status
-FROM Sales.Employees;
+-- Tip 20: Avoid redundant logic with window agg
+SELECT employeeid, firstname,
+       CASE WHEN salary > AVG(salary) OVER () THEN 'Above Average'
+            WHEN salary < AVG(salary) OVER () THEN 'Below Average'
+            ELSE 'Average' END AS status
+FROM sales.employees;
 
 -- ##############################################################
 -- #                             DDL                            #
 -- ##############################################################
-/*
-=============================================================================
-Tip 21: Avoid VARCHAR Data Type If Possible
-=============================================================================
-Tip 22: Avoid Using MAX or Overly Large Lengths
-=============================================================================
-Tip 23: Use NOT NULL If possible 
-=============================================================================
-Tip 24: Make sure all tables have a CLUSTERED PRIMARY KEY
-=============================================================================
-Tip 25: Creeate Nonclustered Index on Foreign Key if they are frequently used
-=============================================================================
-*/
--- Bad Practice 
-CREATE TABLE CustomersInfo (
-    CustomerID INT,
-    FirstName VARCHAR(MAX),
-    LastName TEXT,
-    Country VARCHAR(255),
-    TotalPurchases FLOAT, 
-    Score VARCHAR(255),
-    BirthDate VARCHAR(255),
-    EmployeeID INT,
-    CONSTRAINT FK_Bad_Customers_EmployeeID FOREIGN KEY (EmployeeID)
-        REFERENCES Sales.Employees(EmployeeID)
+-- Bad practice (types/constraints)
+DROP TABLE IF EXISTS public.customersinfo_bad;
+CREATE TABLE public.customersinfo_bad (
+    customerid INT,
+    firstname  TEXT,
+    lastname   TEXT,
+    country    TEXT,
+    totalpurchases DOUBLE PRECISION,
+    score      TEXT,
+    birthdate  TEXT,
+    employeeid INT
 );
 
--- Good Practice Practice 
-CREATE TABLE CustomersInfo (
-    CustomerID INT PRIMARY KEY CLUSTERED,
-    FirstName VARCHAR(50) NOT NULL,
-    LastName VARCHAR(50) NOT NULL,
-    Country VARCHAR(50) NOT NULL,
-    TotalPurchases FLOAT,
-    Score INT,
-    BirthDate DATE,
-    EmployeeID INT,
-    CONSTRAINT FK_CustomersInfo_EmployeeID FOREIGN KEY (EmployeeID)
-        REFERENCES Sales.Employees(EmployeeID)
+-- Better practice
+DROP TABLE IF EXISTS public.customersinfo_good;
+CREATE TABLE public.customersinfo_good (
+    customerid INT PRIMARY KEY,
+    firstname  VARCHAR(50) NOT NULL,
+    lastname   VARCHAR(50) NOT NULL,
+    country    VARCHAR(50) NOT NULL,
+    totalpurchases NUMERIC(12,2),
+    score      INT,
+    birthdate  DATE,
+    employeeid INT REFERENCES sales.employees(employeeid)
 );
-CREATE NONCLUSTERED INDEX IX_CustomersInfo_EmployeeID
-ON CustomersInfo(EmployeeID);
+CREATE INDEX IF NOT EXISTS ix_customersinfo_good_employeeid ON public.customersinfo_good(employeeid);
 
 -- ##############################################################
 -- #                        INDEXING                            #
 -- ##############################################################
-/*
-=================================================================================================================================
-Tip 26: Avoid Over Indexing, as it can slow down insert, update, and delete operations
-=================================================================================================================================
-Tip 27: Regularly review and drop unused indexes to save space and improve write performance
-=================================================================================================================================
-Tip 28: Update table statistics weekly to ensure the query optimizer has the most up-to-date information
-=================================================================================================================================
-Tip 29: Reorganize and rebuild fragmented indexes weekly to maintain query performance.
-=================================================================================================================================
-Tip 30: For large tables (e.g., fact tables), partition the data and then apply a columnstore index for best performance results
-=================================================================================================================================
-*/
-
+-- Tip 26/27/28/29/30: review, drop unused, analyze, reindex, partition + BRIN
+ANALYZE;
+-- REINDEX TABLE sales.orders;           -- if necessary
+-- Partition big tables + BRIN as shown in 25_Partitions.sql

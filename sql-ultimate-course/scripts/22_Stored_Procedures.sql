@@ -15,228 +15,79 @@
 =================================================================================
 */
 
-/* ==============================================================================
-   Basic Stored Procedure
-============================================================================== */
+SET search_path TO sales, mydatabase, public;
 
--- Define the Stored Procedure
-CREATE PROCEDURE GetCustomerSummary AS
+-- In Postgres, you’ll typically use FUNCTIONS (returning rows) for this use case.
+-- We provide:
+--   1) get_customer_summary(country) → totals from Customers
+--   2) get_customer_orders_summary(country) → totals from Orders (joined to country)
+--   3) get_customer_summary_clean(country) → fixes NULL scores, logs via RAISE NOTICE
+--   4) get_customer_summary_safe(country) → shows TRY/CATCH using EXCEPTION
+
+-- 1) Basics (parameters + return table)
+CREATE OR REPLACE FUNCTION sales.get_customer_summary(_country text DEFAULT 'USA')
+RETURNS TABLE(totalcustomers int, avgscore numeric)
+LANGUAGE sql AS $$
+  SELECT COUNT(*)::int, AVG(score)::numeric
+  FROM sales.customers
+  WHERE country = _country;
+$$;
+
+-- 2) Multiple “reports” → separate function that returns orders totals
+CREATE OR REPLACE FUNCTION sales.get_customer_orders_summary(_country text DEFAULT 'USA')
+RETURNS TABLE(totalorders int, totalsales int)
+LANGUAGE sql AS $$
+  SELECT COUNT(o.orderid)::int,
+         COALESCE(SUM(o.sales),0)::int
+  FROM sales.orders o
+  JOIN sales.customers c ON c.customerid = o.customerid
+  WHERE c.country = _country;
+$$;
+
+-- 3) Variables + control flow (UPDATE then return summary)
+CREATE OR REPLACE FUNCTION sales.get_customer_summary_clean(_country text DEFAULT 'USA')
+RETURNS TABLE(totalcustomers int, avgscore numeric)
+LANGUAGE plpgsql AS $$
 BEGIN
-    SELECT
-        COUNT(*) AS TotalCustomers,
-        AVG(Score) AS AvgScore
-    FROM Sales.Customers
-    WHERE Country = 'USA';
+  IF EXISTS (SELECT 1 FROM sales.customers WHERE score IS NULL AND country = _country) THEN
+    RAISE NOTICE 'Updating NULL scores to 0 for country %', _country;
+    UPDATE sales.customers SET score = 0
+    WHERE score IS NULL AND country = _country;
+  ELSE
+    RAISE NOTICE 'No NULL scores found for country %', _country;
+  END IF;
+
+  RETURN QUERY
+  SELECT COUNT(*)::int, AVG(score)::numeric
+  FROM sales.customers
+  WHERE country = _country;
 END
-GO
+$$;
 
---Execute Stored Procedure
-EXEC GetCustomerSummary;
-
-/* ==============================================================================
-   Parameters in Stored Procedure
-============================================================================== */
-
--- Edit the Stored Procedure
-ALTER PROCEDURE GetCustomerSummary @Country NVARCHAR(50) = 'USA' AS
+-- 4) Error handling with EXCEPTION
+CREATE OR REPLACE FUNCTION sales.get_customer_summary_safe(_country text DEFAULT 'USA')
+RETURNS TABLE(totalorders int, totalsales int)
+LANGUAGE plpgsql AS $$
+DECLARE
+  _boom int;
 BEGIN
-    -- Reports: Summary from Customers and Orders
-    SELECT
-        COUNT(*) AS TotalCustomers,
-        AVG(Score) AS AvgScore
-    FROM Sales.Customers
-    WHERE Country = @Country;
+  BEGIN
+    -- Intentional error to demonstrate EXCEPTION (division by zero)
+    _boom := 1/0;
+  EXCEPTION WHEN division_by_zero THEN
+    RAISE NOTICE 'An error occurred: division by zero (demo)';
+  END;
+
+  RETURN QUERY
+  SELECT COUNT(o.orderid)::int, COALESCE(SUM(o.sales),0)::int
+  FROM sales.orders o
+  JOIN sales.customers c ON c.customerid = o.customerid
+  WHERE c.country = _country;
 END
-GO
+$$;
 
---Execute Stored Procedure
-EXEC GetCustomerSummary @Country = 'Germany';
-EXEC GetCustomerSummary @Country = 'USA';
-EXEC GetCustomerSummary;
-
-/* ==============================================================================
-   Multiple Queries in Stored Procedure
-============================================================================== */
-
--- Edit the Stored Procedure
-ALTER PROCEDURE GetCustomerSummary @Country NVARCHAR(50) = 'USA' AS
-BEGIN
-    -- Query 1: Find the Total Nr. of Customers and the Average Score
-    SELECT
-        COUNT(*) AS TotalCustomers,
-        AVG(Score) AS AvgScore
-    FROM Sales.Customers
-    WHERE Country = @Country;
-
-    -- Query 2: Find the Total Nr. of Orders and Total Sales
-    SELECT
-        COUNT(OrderID) AS TotalOrders,
-        SUM(Sales) AS TotalSales
-    FROM Sales.Orders AS o
-    JOIN Sales.Customers AS c
-        ON c.CustomerID = o.CustomerID
-    WHERE c.Country = @Country;
-END
-GO
-
---Execute Stored Procedure
-EXEC GetCustomerSummary @Country = 'Germany';
-EXEC GetCustomerSummary @Country = 'USA';
-EXEC GetCustomerSummary;
-
-/* ==============================================================================
-   Variables in Stored Procedure
-============================================================================== */
-
--- Edit the Stored Procedure
-ALTER PROCEDURE GetCustomerSummary @Country NVARCHAR(50) = 'USA' AS
-BEGIN
-    -- Declare Variables
-    DECLARE @TotalCustomers INT, @AvgScore FLOAT;
-                
-    -- Query 1: Find the Total Nr. of Customers and the Average Score
-    SELECT
-		@TotalCustomers = COUNT(*),
-		@AvgScore = AVG(Score)
-    FROM Sales.Customers
-    WHERE Country = @Country;
-
-	PRINT('Total Customers from ' + @Country + ':' + CAST(@TotalCustomers AS NVARCHAR));
-	PRINT('Average Score from ' + @Country + ':' + CAST(@AvgScore AS NVARCHAR));
-
-    -- Query 2: Find the Total Nr. of Orders and Total Sales
-    SELECT
-        COUNT(OrderID) AS TotalOrders,
-        SUM(Sales) AS TotalSales
-    FROM Sales.Orders AS o
-    JOIN Sales.Customers AS c
-        ON c.CustomerID = o.CustomerID
-    WHERE c.Country = @Country;
-END
-GO
-
---Execute Stored Procedure
-EXEC GetCustomerSummary @Country = 'Germany';
-EXEC GetCustomerSummary @Country = 'USA';
-EXEC GetCustomerSummary;
-
-/* ==============================================================================
-   Control Flow IFELSE in Stored Procedure
-============================================================================== */
-
-ALTER PROCEDURE GetCustomerSummary @Country NVARCHAR(50) = 'USA' AS
-BEGIN
-	-- Declare Variables
-	DECLARE @TotalCustomers INT, @AvgScore FLOAT;     
-
-	/* --------------------------------------------------------------------------
-	   Prepare & Cleanup Data
-	-------------------------------------------------------------------------- */
-
-	IF EXISTS (SELECT 1 FROM Sales.Customers WHERE Score IS NULL AND Country = @Country)
-	BEGIN
-		PRINT('Updating NULL Scores to 0');
-		UPDATE Sales.Customers
-		SET Score = 0
-		WHERE Score IS NULL AND Country = @Country;
-	END
-	ELSE
-	BEGIN
-		PRINT('No NULL Scores found');
-	END;
-
-	/* --------------------------------------------------------------------------
-	   Generating Reports
-	-------------------------------------------------------------------------- */
-	SELECT
-		@TotalCustomers = COUNT(*),
-		@AvgScore = AVG(Score)
-	FROM Sales.Customers
-	WHERE Country = @Country;
-
-	PRINT('Total Customers from ' + @Country + ':' + CAST(@TotalCustomers AS NVARCHAR));
-	PRINT('Average Score from ' + @Country + ':' + CAST(@AvgScore AS NVARCHAR));
-
-	SELECT
-		COUNT(OrderID) AS TotalOrders,
-		SUM(Sales) AS TotalSales,
-		1/0 AS FaultyCalculation  -- Intentional error for demonstration
-	FROM Sales.Orders AS o
-	JOIN Sales.Customers AS c
-		ON c.CustomerID = o.CustomerID
-	WHERE c.Country = @Country;
-END
-GO
-
---Execute Stored Procedure
-EXEC GetCustomerSummary @Country = 'Germany';
-EXEC GetCustomerSummary @Country = 'USA';
-EXEC GetCustomerSummary;
-
-/* ==============================================================================
-   Error Handling TRY CATCH in Stored Procedure
-============================================================================== */
-
-ALTER PROCEDURE GetCustomerSummary @Country NVARCHAR(50) = 'USA' AS
-    
-BEGIN
-    BEGIN TRY
-        -- Declare Variables
-        DECLARE @TotalCustomers INT, @AvgScore FLOAT;     
-
-        /* --------------------------------------------------------------------------
-           Prepare & Cleanup Data
-        -------------------------------------------------------------------------- */
-
-        IF EXISTS (SELECT 1 FROM Sales.Customers WHERE Score IS NULL AND Country = @Country)
-        BEGIN
-            PRINT('Updating NULL Scores to 0');
-            UPDATE Sales.Customers
-            SET Score = 0
-            WHERE Score IS NULL AND Country = @Country;
-        END
-        ELSE
-        BEGIN
-            PRINT('No NULL Scores found');
-        END;
-
-        /* --------------------------------------------------------------------------
-           Generating Reports
-        -------------------------------------------------------------------------- */
-        SELECT
-            @TotalCustomers = COUNT(*),
-            @AvgScore = AVG(Score)
-        FROM Sales.Customers
-        WHERE Country = @Country;
-
-        PRINT('Total Customers from ' + @Country + ':' + CAST(@TotalCustomers AS NVARCHAR));
-        PRINT('Average Score from ' + @Country + ':' + CAST(@AvgScore AS NVARCHAR));
-
-        SELECT
-            COUNT(OrderID) AS TotalOrders,
-            SUM(Sales) AS TotalSales,
-            1/0 AS FaultyCalculation  -- Intentional error for demonstration
-        FROM Sales.Orders AS o
-        JOIN Sales.Customers AS c
-            ON c.CustomerID = o.CustomerID
-        WHERE c.Country = @Country;
-    END TRY
-    BEGIN CATCH
-        /* --------------------------------------------------------------------------
-           Error Handling
-        -------------------------------------------------------------------------- */
-        PRINT('An error occurred.');
-        PRINT('Error Message: ' + ERROR_MESSAGE());
-        PRINT('Error Number: ' + CAST(ERROR_NUMBER() AS NVARCHAR));
-        PRINT('Error Severity: ' + CAST(ERROR_SEVERITY() AS NVARCHAR));
-        PRINT('Error State: ' + CAST(ERROR_STATE() AS NVARCHAR));
-        PRINT('Error Line: ' + CAST(ERROR_LINE() AS NVARCHAR));
-        PRINT('Error Procedure: ' + ISNULL(ERROR_PROCEDURE(), 'N/A'));
-    END CATCH;
-END
-GO
-
---Execute Stored Procedure
-EXEC GetCustomerSummary @Country = 'Germany';
-EXEC GetCustomerSummary @Country = 'USA';
-EXEC GetCustomerSummary;
+-- Example calls:
+-- SELECT * FROM sales.get_customer_summary('Germany');
+-- SELECT * FROM sales.get_customer_orders_summary('USA');
+-- SELECT * FROM sales.get_customer_summary_clean('USA');
+-- SELECT * FROM sales.get_customer_summary_safe('Germany');

@@ -6,24 +6,25 @@
 =================================================================================
 */
 
+SET search_path TO sales, mydatabase, public;
+
 /* ==============================================================================
-   Step 1: Create Temporary Table (#Orders)
+   Temporary table flow (PostgreSQL)
+   - T-SQL: SELECT ... INTO #Orders ; DELETE ; SELECT INTO Sales.OrdersTest
+   - PG:    CREATE TEMP TABLE orders_tmp AS ... ; DELETE ; CREATE TABLE AS ...
 ============================================================================== */
-SELECT
-    *
-INTO #Orders
-FROM Sales.Orders;
-  
-/* ==============================================================================
-   Step 2: Clean Data in Temporary Table
-============================================================================== */
-DELETE FROM #Orders
-WHERE OrderStatus = 'Delivered';
-  
-/* ==============================================================================
-   Step 3: Load Cleaned Data into Permanent Table (Sales.OrdersTest)
-============================================================================== */
-SELECT
-    *
-INTO Sales.OrdersTest
-FROM #Orders;
+
+-- Safety: start clean if you re-run
+DROP TABLE IF EXISTS sales.orderstest;
+
+-- Step 1: Create temporary table from Sales.Orders
+CREATE TEMP TABLE orders_tmp AS
+SELECT * FROM sales.orders;
+
+-- Step 2: Clean temp data
+DELETE FROM orders_tmp
+WHERE orderstatus = 'Delivered';
+
+-- Step 3: Load cleaned data into a permanent table
+CREATE TABLE sales.orderstest AS
+SELECT * FROM orders_tmp;

@@ -22,269 +22,91 @@
 =================================================================================
 */
 
+SET search_path TO sales, mydatabase, public;
+
 /* ==============================================================================
-   Clustered and Non-Clustered Indexes
+   PostgreSQL indexing demo
+   - No "clustered vs nonclustered" in PG; PK/UNIQUE create btree indexes
+   - We’ll demo btree, unique, composite, partial, expression, and monitoring
+   - Columnstore does not exist natively → use BRIN or external extensions
 ============================================================================== */
 
--- Create a Heap Table as a copy of Sales.Customers 
-SELECT *
-INTO Sales.DBCustomers
-FROM Sales.Customers;
+-- Working copy (heap by default)
+DROP TABLE IF EXISTS sales.dbcustomers;
+CREATE TABLE sales.dbcustomers AS TABLE sales.customers;
 
--- Test Query: Select Data and Check the Execution Plan
-SELECT *
-FROM Sales.DBCustomers
-WHERE CustomerID = 1;
+-- Lookups by PK key (dbcustomers has no PK yet)
+CREATE UNIQUE INDEX idx_dbcustomers_customerid ON sales.dbcustomers (customerid);
 
--- Create a Clustered Index on Sales.DBCustomers using CustomerID
-CREATE CLUSTERED INDEX idx_DBCustomers_CustomerID
-ON Sales.DBCustomers (CustomerID);
+-- Lookup by LastName and FirstName
+CREATE INDEX idx_dbcustomers_lastname  ON sales.dbcustomers (lastname);
+CREATE INDEX idx_dbcustomers_firstname ON sales.dbcustomers (firstname);
 
--- Attempt to create a second Clustered Index on the same table (will fail) 
-CREATE CLUSTERED INDEX idx_DBCustomers_CustomerID
-ON Sales.DBCustomers (CustomerID);
+-- Composite index: (country, score) to illustrate leftmost-prefix usage
+CREATE INDEX idx_dbcustomers_country_score ON sales.dbcustomers (country, score);
 
--- Drop the Clustered Index 
-DROP INDEX idx_DBCustomers_CustomerID
-ON Sales.DBCustomers;
+-- Queries
+SELECT * FROM sales.dbcustomers WHERE customerid = 1;
+SELECT * FROM sales.dbcustomers WHERE lastname = 'Brown';
+SELECT * FROM sales.dbcustomers WHERE country = 'USA' AND score > 500;
+SELECT * FROM sales.dbcustomers WHERE score > 500 AND country = 'USA'; -- may not use composite efficiently
 
--- Test Query: Select Data with a Filter on LastName
-SELECT *
-FROM Sales.DBCustomers
-WHERE LastName = 'Brown';
+-- UNIQUE index examples
+-- (Product names in your seed are unique; this should succeed)
+DROP INDEX IF EXISTS idx_products_product;
+CREATE UNIQUE INDEX idx_products_product ON sales.products (product);
 
--- Create a Non-Clustered Index on LastName
-CREATE NONCLUSTERED INDEX idx_DBCustomers_LastName
-ON Sales.DBCustomers (LastName);
+-- This one may fail if category has duplicates — run to see behaviour
+-- DROP INDEX IF EXISTS idx_products_category;
+-- CREATE UNIQUE INDEX idx_products_category ON sales.products (category);
 
--- Create an additional Non-Clustered Index on FirstName
-CREATE INDEX idx_DBCustomers_FirstName
-ON Sales.DBCustomers (FirstName);
+-- Partial (filtered) index
+DROP INDEX IF EXISTS idx_customers_country_us;
+CREATE INDEX idx_customers_country_us ON sales.customers (country)
+WHERE country = 'USA';
 
--- Create a Composite (Composed) Index on Country and Score 
-CREATE INDEX idx_DBCustomers_CountryScore
-ON Sales.DBCustomers (Country, Score);
+-- Expression index for case-insensitive search
+DROP INDEX IF EXISTS idx_customers_lastname_lower;
+CREATE INDEX idx_customers_lastname_lower ON sales.customers ((lower(lastname)));
 
--- Query that uses the Composite Index
-SELECT *
-FROM Sales.DBCustomers
-WHERE Country = 'USA'
-  AND Score > 500;
+-- Columnstore analogue: BRIN on large, append-only date column
+-- (best on big tables; harmless demo here)
+DROP INDEX IF EXISTS idx_orders_brin_orderdate;
+CREATE INDEX idx_orders_brin_orderdate ON sales.orders
+USING brin (orderdate);
 
--- Query that likely won't use the Composite Index due to column order
-SELECT *
-FROM Sales.DBCustomers
-WHERE Score > 500
-  AND Country = 'USA';
+-- ---------------------------------------------------------------------------
+-- Monitoring / catalog views
+-- ---------------------------------------------------------------------------
+-- List indexes on a table
+SELECT tablename, indexname, indexdef
+FROM pg_indexes
+WHERE schemaname='sales' AND tablename IN ('dbcustomers','customers','orders')
+ORDER BY tablename, indexname;
 
-/* ==============================================================================
-   Leftmost Prefix Rule Explanation
--------------------------------------------------------------------------------
-   For a composite index defined on columns (A, B, C, D), the index can be
-   utilized by queries that filter on:
-     - Column A only,
-     - Columns A and B,
-     - Columns A, B, and C.
-   However, queries that filter on:
-     - Column B only,
-     - Columns A and C,
-     - Columns A, B, and D,
-   will not be able to fully utilize the index due to the leftmost prefix rule.
-=================================================================================
-*/
+-- Usage stats (reset on server restart)
+SELECT
+  c.relname AS table_name,
+  i.relname AS index_name,
+  s.idx_scan, s.idx_tup_read, s.idx_tup_fetch
+FROM pg_stat_user_indexes s
+JOIN pg_class i ON i.oid = s.indexrelid
+JOIN pg_class c ON c.oid = s.relid
+WHERE c.relnamespace = 'sales'::regnamespace
+ORDER BY (s.idx_scan + s.idx_tup_read) DESC NULLS LAST;
 
-/* ==============================================================================
-   Columnstore Indexes
-============================================================================== */
+-- Duplicate index finder (rough)
+SELECT
+  c.relname AS table_name,
+  array_agg(i.relname ORDER BY i.relname) AS indexes
+FROM pg_index x
+JOIN pg_class c ON c.oid = x.indrelid
+JOIN pg_class i ON i.oid = x.indexrelid
+WHERE c.relnamespace = 'sales'::regnamespace
+GROUP BY c.relname
+HAVING COUNT(*) <> COUNT(DISTINCT x.indkey);  -- simplistic heuristic
 
--- Create a Clustered Columnstore Index on Sales.DBCustomers
-CREATE CLUSTERED COLUMNSTORE INDEX idx_DBCustomers_CS
-ON Sales.DBCustomers;
-GO
-
--- Create a Non-Clustered Columnstore Index on the FirstName column
-CREATE NONCLUSTERED COLUMNSTORE INDEX idx_DBCustomers_CS_FirstName
-ON Sales.DBCustomers (FirstName);
-GO
-
--- Switch context to AdventureWorksDW2022 for FactInternetSales examples */
-USE AdventureWorksDW2022;
-
--- Create a Heap Table from FactInternetSales
-SELECT *
-INTO FactInternetSales_HP
-FROM FactInternetSales;
-
--- Create a RowStore Table from FactInternetSales
-SELECT *
-INTO FactInternetSales_RS
-FROM FactInternetSales;
-
--- Create a Clustered Index (RowStore) on FactInternetSales_RS
-CREATE CLUSTERED INDEX idx_FactInternetSales_RS_PK
-ON FactInternetSales_RS (SalesOrderNumber, SalesOrderLineNumber);
-
--- Create a Columnstore Table from FactInternetSales
-SELECT *
-INTO FactInternetSales_CS
-FROM FactInternetSales;
-
--- Create a Clustered Columnstore Index on FactInternetSales_CS
-CREATE CLUSTERED COLUMNSTORE INDEX idx_FactInternetSales_CS_PK
-ON FactInternetSales_CS;
-
-/* ==============================================================================
-   Unique Indexes
-============================================================================== */
-
--- Attempt to create a Unique Index on the Category column in Sales.Products.
-   Note: This may fail if duplicate values exist.
-
-CREATE UNIQUE INDEX idx_Products_Category
-ON Sales.Products (Category);
-  
--- Create a Unique Index on the Product column in Sales.Products
-CREATE UNIQUE INDEX idx_Products_Product
-ON Sales.Products (Product);
-  
--- Test Insert: Attempt to insert a duplicate value (should fail if the constraint is enforced)
-INSERT INTO Sales.Products (ProductID, Product)
-VALUES (106, 'Caps');
-
-/* ==============================================================================
-   Filtered Indexes
-============================================================================== */
-
--- Test Query: Select Customers where Country is 'USA' 
-SELECT *
-FROM Sales.Customers
-WHERE Country = 'USA';
-  
--- Create a Non-Clustered Filtered Index on the Country column for rows where Country = 'USA'
-CREATE NONCLUSTERED INDEX idx_Customers_Country
-ON Sales.Customers (Country)
-WHERE Country = 'USA';
-
-/* ==============================================================================
-   Index Monitoring
--------------------------------------------------------------------------------
-     - List indexes and monitor their usage.
-     - Report missing and duplicate indexes.
-     - Retrieve and update statistics.
-     - Check index fragmentation and perform index maintenance (reorganize/rebuild).
-=================================================================================
-*/
-
-/* ==============================================================================
-   Monitor Index Usage
-============================================================================== */
-
--- List all indexes on a specific table
-sp_helpindex 'Sales.DBCustomers'
-
--- Monitor Index Usage
-SELECT 
-	tbl.name AS TableName,
-    idx.name AS IndexName,
-    idx.type_desc AS IndexType,
-    idx.is_primary_key AS IsPrimaryKey,
-    idx.is_unique AS IsUnique,
-    idx.is_disabled AS IsDisabled,
-    s.user_seeks AS UserSeeks,
-    s.user_scans AS UserScans,
-    s.user_lookups AS UserLookups,
-    s.user_updates AS UserUpdates,
-    COALESCE(s.last_user_seek, s.last_user_scan) AS LastUpdate
-FROM sys.indexes idx
-JOIN sys.tables tbl
-    ON idx.object_id = tbl.object_id
-LEFT JOIN sys.dm_db_index_usage_stats s
-    ON s.object_id = idx.object_id
-    AND s.index_id = idx.index_id
-ORDER BY tbl.name, idx.name;
-
-/* ==============================================================================
-   Monitor Missing Indexes
-============================================================================== */
-
-SELECT * 
-FROM sys.dm_db_missing_index_details;
-
-/* ==============================================================================
-   Monitor Duplicate Indexes
-============================================================================== */
-
-SELECT  
-	tbl.name AS TableName,
-	col.name AS IndexColumn,
-	idx.name AS IndexName,
-	idx.type_desc AS IndexType,
-	COUNT(*) OVER (PARTITION BY  tbl.name , col.name ) ColumnCount
-FROM sys.indexes idx
-JOIN sys.tables tbl ON idx.object_id = tbl.object_id
-JOIN sys.index_columns ic ON idx.object_id = ic.object_id AND idx.index_id = ic.index_id
-JOIN sys.columns col ON ic.object_id = col.object_id AND ic.column_id = col.column_id
-ORDER BY ColumnCount DESC
-
-/* ==============================================================================
-   Update Statistics
-============================================================================== */
-
-SELECT 
-    SCHEMA_NAME(t.schema_id) AS SchemaName,
-    t.name AS TableName,
-    s.name AS StatisticName,
-    sp.last_updated AS LastUpdate,
-    DATEDIFF(day, sp.last_updated, GETDATE()) AS LastUpdateDay,
-    sp.rows AS 'Rows',
-    sp.modification_counter AS ModificationsSinceLastUpdate
-FROM sys.stats AS s
-JOIN sys.tables AS t
-    ON s.object_id = t.object_id
-CROSS APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) AS sp
-ORDER BY sp.modification_counter DESC;
-
--- Update statistics for a specific automatically created system statistic
-UPDATE STATISTICS Sales.DBCustomers _WA_Sys_00000001_6EF57B66;
-GO
-
--- Update all statistics for the Sales.DBCustomers table
-UPDATE STATISTICS Sales.DBCustomers;
-GO
-
--- Update statistics for all tables in the database
-EXEC sp_updatestats;
-GO
-
-/* ==============================================================================
-   Fragementations
-============================================================================== */
-
--- Retrieve index fragmentation statistics for the current database
-SELECT 
-    tbl.name AS TableName,
-    idx.name AS IndexName,
-    s.avg_fragmentation_in_percent,
-    s.page_count
-FROM sys.dm_db_index_physical_stats(DB_ID(), NULL, NULL, NULL, 'LIMITED') AS s
-INNER JOIN sys.tables tbl 
-    ON s.object_id = tbl.object_id
-INNER JOIN sys.indexes AS idx 
-    ON idx.object_id = s.object_id
-    AND idx.index_id = s.index_id
-ORDER BY s.avg_fragmentation_in_percent DESC;
-
--- Reorganize the index (lightweight defragmentation)
-ALTER INDEX idx_Customers_CS_Country 
-ON Sales.Customers REORGANIZE;
-GO
-
--- Rebuild the index (full rebuild, more resource-intensive)
-ALTER INDEX idx_Customers_Country 
-ON Sales.Customers REBUILD;
-GO
-
-
-
-
-
+-- Maintenance
+ANALYZE sales.dbcustomers;
+-- REINDEX (use sparingly; locks table)
+-- REINDEX TABLE sales.dbcustomers;
