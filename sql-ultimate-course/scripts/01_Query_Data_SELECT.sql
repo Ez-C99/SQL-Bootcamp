@@ -40,7 +40,7 @@ SELECT * FROM orders;
 SELECT first_name, country, score FROM customers;
 
 /* WHERE */
-SELECT * FROM customers WHERE score <> 0;
+SELECT * FROM customers WHERE score != 0; -- not equal to zero
 SELECT * FROM customers WHERE country = 'Germany';
 SELECT first_name, country FROM customers WHERE country = 'Germany';
 
@@ -62,6 +62,13 @@ GROUP BY country;
 
 -- (Invalid example in original left commented)
 -- SELECT country, first_name, SUM(score) FROM customers GROUP BY country;
+
+-- GROUP BY RULE: All SELECT columns must appear in the GROUP BY clause or be used in an aggregate function
+
+-- Exercise: Total score and total customers per country
+SELECT country, SUM(score) AS total_score, COUNT(id) AS total_customers
+FROM customers
+GROUP BY country
 
 /* HAVING */
 SELECT country, AVG(score) AS avg_score
