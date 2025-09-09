@@ -85,6 +85,9 @@ HAVING AVG(score) > 430;
 /* DISTINCT */
 SELECT DISTINCT country FROM customers;
 
+-- Unique list of countries
+SELECT DISTINCT country FROM customers as unique_countries;
+
 /* TOP -> LIMIT */
 SELECT * FROM customers LIMIT 3;
 SELECT * FROM customers ORDER BY score DESC LIMIT 3;
