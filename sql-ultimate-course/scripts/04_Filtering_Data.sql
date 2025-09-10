@@ -39,9 +39,10 @@ SELECT * FROM customers WHERE score >= 100 AND score <= 500;
 
 /* IN */
 SELECT * FROM customers WHERE country IN ('Germany', 'USA');
+-- Useful for avoiding stacking `OR =` clauses and has better perfofmance + readability
 
 /* LIKE */
-SELECT * FROM customers WHERE first_name LIKE 'M%';
-SELECT * FROM customers WHERE first_name LIKE '%n';
-SELECT * FROM customers WHERE first_name LIKE '%r%';
-SELECT * FROM customers WHERE first_name LIKE '__r%';
+SELECT * FROM customers WHERE first_name LIKE 'M%'; -- starts with "M"
+SELECT * FROM customers WHERE first_name LIKE '%n'; -- ends with "n"
+SELECT * FROM customers WHERE first_name LIKE '%r%'; -- has "r" anywhere inside it
+SELECT * FROM customers WHERE first_name LIKE '__r%'; -- number of characters per underscore then r
