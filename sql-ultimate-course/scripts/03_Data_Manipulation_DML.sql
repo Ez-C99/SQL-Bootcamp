@@ -18,6 +18,8 @@ INSERT INTO customers (id, first_name, country, score) VALUES
   (6, 'Anna', 'USA', NULL),
   (7, 'Sam', NULL, 100);
 
+SELECT * FROM customers
+
 /* (Demo only) The following would error in Postgres – left commented:
 -- INSERT INTO customers (id, first_name, country, score) VALUES (8, 'Max', 'USA', NULL);
 -- INSERT INTO customers (id, first_name, country, score) VALUES ('Max', 9, 'Max', NULL);
@@ -41,8 +43,8 @@ UPDATE customers SET score = 0 WHERE score IS NULL;
 SELECT * FROM customers WHERE score IS NULL;
 
 /* DELETE */
-SELECT * FROM customers WHERE id > 5;
+SELECT * FROM customers WHERE id > 5; -- WHERE is critical so you don't delete everything
 DELETE FROM customers WHERE id > 5;
 
-DELETE FROM persons;
-TRUNCATE TABLE persons;
+DELETE FROM persons; -- DELETE FROM <table> deletes data without the table too
+TRUNCATE TABLE persons; -- Same as above but faster
