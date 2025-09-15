@@ -18,7 +18,7 @@ SET search_path TO mydatabase, sales, public;
 
 /* RULES (examples that would error are commented) */
 
--- Data types should match across branches of set ops
+-- Data types should match across branches of set ops (inspect columns to verify)
 -- SELECT FirstName, LastName, Country FROM sales.customers
 -- UNION
 -- SELECT FirstName, LastName FROM sales.employees; -- (column count mismatch)
@@ -27,6 +27,8 @@ SET search_path TO mydatabase, sales, public;
 -- SELECT LastName, CustomerID FROM sales.customers
 -- UNION
 -- SELECT EmployeeID, LastName FROM sales.employees;
+
+/* ORDER BY can only be used at the end of the query to sort final result */
 
 /* Column aliases come from the first SELECT */
 SELECT CustomerID AS id, LastName AS last_name FROM sales.customers
@@ -39,21 +41,25 @@ UNION
 SELECT FirstName, LastName FROM sales.employees;
 
 /* TASK 1: UNION */
+-- Return all distinct rows from both tables
 SELECT FirstName, LastName FROM sales.customers
 UNION
 SELECT FirstName, LastName FROM sales.employees;
 
 /* TASK 2: UNION ALL */
+-- Return all rows, include duplicates, from both tables
 SELECT FirstName, LastName FROM sales.customers
 UNION ALL
 SELECT FirstName, LastName FROM sales.employees;
 
 /* TASK 3: EXCEPT (employees not customers) */
+-- Return unique rows from 1st table that aren't in 2nd table
 SELECT FirstName, LastName FROM sales.employees
 EXCEPT
 SELECT FirstName, LastName FROM sales.customers;
 
 /* TASK 4: INTERSECT (employees also customers) */
+-- Return common rows between 2 tables
 SELECT FirstName, LastName FROM sales.employees
 INTERSECT
 SELECT FirstName, LastName FROM sales.customers;
